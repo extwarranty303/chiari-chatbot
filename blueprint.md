@@ -1,17 +1,21 @@
-# Project Blueprint
+# Chiari Chatbot Blueprint
 
 ## Overview
 
-This project is a Next.js application with a Firebase backend. It allows users to create and view community posts.
+A health-related chatbot for those affected by Chiari Malformations.
 
-## Features & Design
+## Design and Features
 
-*   **Framework:** Next.js with App Router
-*   **Styling:** Tailwind CSS
-*   **Backend:** Firebase DataConnect for database interactions.
+*This section will be populated as features are implemented.*
 
-## Current Action: Deployment
+## Current Plan
 
-*   **Action:** Deploy the application to Firebase Hosting.
-*   **Type:** Server-side application.
-*   **Deployment Target:** `.next` directory.
+**Objective:** Resolve the build failure.
+
+**Steps:**
+
+1.  **Identify the root cause:** The build was failing because the project files were not in the remote GitHub repository.
+2.  **Add files to git:** Added all project files to a new git commit.
+3.  **Set remote origin:** Added the GitHub repository as the remote origin.
+4.  **Resolve merge conflict:** Resolved a merge conflict in the `README.md` file by choosing the remote version.
+5.  **Push to remote:** Pushed all project files to the remote repository.
