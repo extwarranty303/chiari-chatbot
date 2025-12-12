@@ -1,0 +1,30 @@
+mutation CreateCommunityPost($userId: UUID!, $content: String!, $title: String!) @auth(level: USER) {
+  communityPost_insert(data: {userId: $userId, content: $content, title: $title, createdAt_expr: "request.time"})
+}
+
+query ListCommunityPosts @auth(level: PUBLIC, insecureReason: "This operation is safe to expose to the public") {
+  communityPosts {
+    id
+    title
+    content
+    createdAt
+    user {
+      id
+      displayName
+    }
+  }
+}
+
+mutation CreateSymptomLog($userId: UUID!, $logDate: Date!, $notes: String, $severity: Int!, $symptomName: String!) @auth(level: USER) {
+  symptomLog_insert(data: {userId: $userId, logDate: $logDate, notes: $notes, severity: $severity, symptomName: $symptomName})
+}
+
+query GetUserSymptomLogs($userId: UUID!) @auth(level: USER) {
+  symptomLogs(where: {userId: {eq: $userId}}) {
+    id
+    logDate
+    notes
+    severity
+    symptomName
+  }
+}

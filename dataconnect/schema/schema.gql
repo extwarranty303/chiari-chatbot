@@ -1,0 +1,53 @@
+type User @table {
+  displayName: String!
+  createdAt: Timestamp!
+  email: String
+  photoUrl: String
+  bio: String
+}
+
+type Conversation @table {
+  user: User!
+  createdAt: Timestamp!
+  lastUpdatedAt: Timestamp!
+  title: String
+}
+
+type Message @table {
+  conversation: Conversation!
+  senderType: String!
+  content: String!
+  createdAt: Timestamp!
+}
+
+type Resource @table {
+  title: String!
+  url: String!
+  resourceType: String!
+  createdAt: Timestamp!
+  description: String
+  tags: [String]
+}
+
+type SymptomLog @table {
+  user: User!
+  symptomName: String!
+  severity: Int!
+  logDate: Date!
+  notes: String
+}
+
+type CommunityPost @table {
+  user: User!
+  title: String!
+  content: String!
+  createdAt: Timestamp!
+  tags: [String]
+}
+
+type CommunityComment @table {
+  user: User!
+  communityPost: CommunityPost!
+  content: String!
+  createdAt: Timestamp!
+}

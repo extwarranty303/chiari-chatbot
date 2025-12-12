@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chiari Voices Chatbot</title>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-auth.js';
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-storage.js';
+
+        // Your Firebase project configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCLBR4sUADbz83jzLcxwJS5J8arYNc5QMY",
+            authDomain: "chiari-chatbot.firebaseapp.com",
+            projectId: "chiari-chatbot",
+            storageBucket: "chiari-chatbot.firebasestorage.app",
+            messagingSenderId: "789264573464",
+            appId: "1:789264573464:web:c16b79cd54d6a1a2574f6d",
+            measurementId: "G-XERFF2XHBG"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const storage = getStorage(app);
+
+        let currentUser = null;
+        let currentChatDocRef = null; // Reference to the current chat document
+
+        const messagesCollectionPath = 'chats'; // The root collection for chats
+
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const attachmentInput = document.getElementById('attachment-input');
+        const attachmentNameSpan = document.getElementById('attachment-name');
+
+        // Sign in anonymously
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                console.log("Signed in anonymously as:", user.uid);
+                // After successful sign-in, create or get a chat session
+                // For simplicity, we'll create a new chat document for each anonymous session
+                // In a real app, you might look for an existing one or save chatId in local storage
+                createNewChatSession(user.uid);
+            } else {
+                signInAnonymously(auth).catch((error) => {
+                    console.error("Error signing in anonymously:", error);
+                    alert("Error signing in: " + error.message);
+                });
+            }
+        });
+
+        async function createNewChatSession(uid) {
+            try {
+                // Create a new chat document in the 'chats' collection
+                currentChatDocRef = await addDoc(collection(db, messagesCollectionPath), {
+                    userId: uid,
+                    createdAt: serverTimestamp(),
+                    // You can add other initial chat session data here if needed
+                });
+                console.log("New chat session created with ID:", currentChatDocRef.id);
+                listenForMessages(); // Start listening for messages in this new chat session
+            } catch (error) {
+                console.error("Error creating new chat session:", error);
+            }
+        }
+
+        async function sendMessage() {
+            const text = messageInput.value.trim();
+            const attachmentFile = attachmentInput.files[0];
+
+            if (!text && !attachmentFile) {
+                alert("Please enter a message or select an attachment.");
+                return;
+            }
+            if (!currentUser || !currentChatDocRef) {
+                alert("Chat session not initialized. Please wait or refresh.");
+                return;
+            }
+
+            sendButton.disabled = true;
+            messageInput.disabled = true;
+            attachmentInput.disabled = true;
+
+            let fileUrl = null;
+            let fileType = null;
+
+            if (attachmentFile) {
+                try {
+                    const storageRef = ref(storage, `chat_attachments/${currentUser.uid}/${currentChatDocRef.id}/${attachmentFile.name}`);
+                    const uploadResult = await uploadBytes(storageRef, attachmentFile);
+                    fileUrl = await getDownloadURL(uploadResult.ref);
+                    fileType = attachmentFile.type.startsWith('image/') ? 'image' : (attachmentFile.type === 'application/pdf' ? 'pdf' : 'other');
+                    console.log("Attachment uploaded:", fileUrl);
+                } catch (error) {
+                    console.error("Error uploading attachment:", error);
+                    alert("Failed to upload attachment.");
+                    sendButton.disabled = false;
+                    messageInput.disabled = false;
+                    attachmentInput.disabled = false;
+                    return;
+                }
+            }
+
+            try {
+                // Add the user's message to the specific chat session's messages subcollection
+                await addDoc(collection(db, messagesCollectionPath, currentChatDocRef.id, 'messages'), {
+                    text: text,
+                    role: 'user', // Indicate this is a user message
+                    createdAt: serverTimestamp(),
+                    attachment: fileUrl ? { url: fileUrl, type: fileType, name: attachmentFile ? attachmentFile.name : '' } : null,
+                });
+                messageInput.value = '';
+                attachmentInput.value = ''; // Clear attachment input
+                attachmentNameSpan.textContent = ''; // Clear attachment name display
+            } catch (error) {
+                console.error("Error sending message:", error);
+                alert("Error sending message: " + error.message);
+            } finally {
+                sendButton.disabled = false;
+                messageInput.disabled = false;
+                attachmentInput.disabled = false;
+            }
+        }
+
+        function listenForMessages() {
+            if (!currentChatDocRef) return;
+
+            const messagesRef = collection(db, messagesCollectionPath, currentChatDocRef.id, 'messages');
+            const q = query(messagesRef, orderBy('createdAt', 'asc'));
+
+            onSnapshot(q, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added') {
+                        const message = change.doc.data();
+                        displayMessage(message);
+                    }
+                    // Optional: Handle 'modified' or 'removed' if your extension updates existing messages
+                    // For the Gemini extension, it typically adds a new message once completed.
+                });
+                chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
+            }, (error) => {
+                console.error("Error listening for messages:", error);
+            });
+        }
+
+        function displayMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', message.role === 'user' ? 'user-message' : 'bot-message');
+
+            let content = '';
+            if (message.text) {
+                content += `<p>${message.text}</p>`;
+            }
+            if (message.attachment && message.attachment.url) {
+                if (message.attachment.type === 'image') {
+                    content += `<img src="${message.attachment.url}" alt="Attachment" style="max-width: 200px; max-height: 200px; display: block; margin-top: 10px;">`;
+                } else if (message.attachment.type === 'pdf') {
+                    content += `<a href="${message.attachment.url}" target="_blank" rel="noopener noreferrer">${message.attachment.name || 'PDF Document'}</a>`;
+                } else {
+                    content += `<a href="${message.attachment.url}" target="_blank" rel="noopener noreferrer">Download Attachment: ${message.attachment.name || 'File'}</a>`;
+                }
+            }
+
+            messageElement.innerHTML = content;
+            chatMessages.appendChild(messageElement);
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        attachmentInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                attachmentNameSpan.textContent = e.target.files[0].name;
+            } else {
+                attachmentNameSpan.textContent = '';
+            }
+        });
+
+    </script>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .chat-container { background-color: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 100%; max-width: 600px; display: flex; flex-direction: column; height: 80vh; }
+        #chat-messages { flex-grow: 1; padding: 20px; overflow-y: auto; border-bottom: 1px solid #eee; }
+        .message { margin-bottom: 15px; padding: 10px 15px; border-radius: 18px; line-height: 1.4; max-width: 80%; }
+        .user-message { background-color: #dcf8c6; align-self: flex-end; margin-left: auto; text-align: right;}
+        .bot-message { background-color: #e6e6e6; align-self: flex-start; margin-right: auto; text-align: left;}
+        .input-area { display: flex; padding: 15px; border-top: 1px solid #eee; align-items: center; }
+        #message-input { flex-grow: 1; border: 1px solid #ccc; border-radius: 20px; padding: 10px 15px; font-size: 16px; margin-right: 10px; }
+        #send-button { background-color: #4CAF50; color: white; border: none; border-radius: 20px; padding: 10px 20px; cursor: pointer; font-size: 16px; }
+        #send-button:hover { background-color: #45a049; }
+        #send-button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .attachment-upload { display: flex; align-items: center; margin-right: 10px; }
+        .attachment-upload label { background-color: #007bff; color: white; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 14px; margin-right: 5px; }
+        .attachment-upload label:hover { background-color: #0056b3; }
+        #attachment-input { display: none; }
+        #attachment-name { font-size: 14px; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div id="chat-messages">
+            <!-- Chat messages will appear here -->
+        </div>
+        <div class="input-area">
+            <div class="attachment-upload">
+                <label for="attachment-input">📎</label>
+                <input type="file" id="attachment-input" accept=".pdf,image/*">
+                <span id="attachment-name"></span>
+            </div>
+            <input type="text" id="message-input" placeholder="Type your message...">
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+</body>
+</html>
